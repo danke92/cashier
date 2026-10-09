@@ -423,14 +423,173 @@ table { border-collapse: collapse; width: 100%; }
   .col-qr { position: static; }
   .stat-strip { grid-template-columns: repeat(2, 1fr); }
 }
+/* ===================== 登录门 ===================== */
+body.is-locked { overflow: hidden; }
+
+.auth-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(140deg, #eef2f7 0%, #f7f9fb 45%, #eef5f0 100%);
+  backdrop-filter: blur(3px);
+  overflow-y: auto;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 384px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: var(--shadow-lg);
+  padding: 30px 26px 24px;
+  animation: authIn .28s ease-out;
+}
+
+@keyframes authIn {
+  from { opacity: 0; transform: translateY(12px) scale(.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+.auth-head { text-align: center; margin-bottom: 22px; }
+
+.auth-logo {
+  width: 54px; height: 54px;
+  margin: 0 auto 12px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--accent) 0%, #22c55e 100%);
+  color: #fff;
+  font-size: 26px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 6px 18px rgba(22,163,74,.26);
+}
+
+.auth-head h2 { font-size: 20px; letter-spacing: .5px; }
+.auth-head p { margin-top: 5px; color: var(--text-3); font-size: 13px; }
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  background: var(--line-soft);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 20px;
+}
+
+.auth-tabs button {
+  padding: 9px 0;
+  border-radius: 9px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  transition: background .16s, color .16s;
+}
+.auth-tabs button.is-active {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(16,24,40,.08);
+}
+
+.auth-pane { display: none; }
+.auth-pane.is-active { display: block; animation: authIn .24s ease-out; }
+
+.auth-label {
+  display: block;
+  margin: 0 0 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.auth-label small { margin-left: 6px; font-weight: 400; color: var(--text-3); }
+
+.auth-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fbfcfd;
+  font-size: 14.5px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.auth-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(22,163,74,.12);
+  background: #fff;
+}
+
+.auth-code-row { display: flex; gap: 9px; }
+.auth-code-row .auth-input { flex: 1; letter-spacing: 4px; }
+.auth-send { flex: none; width: 116px; height: 44px; padding: 0; font-size: 13px; }
+.auth-send:disabled { opacity: .6; cursor: not-allowed; }
+
+.auth-err, .auth-hint {
+  min-height: 18px;
+  margin: 6px 0 10px;
+  font-size: 12.5px;
+  line-height: 18px;
+}
+.auth-err  { color: var(--danger); }
+.auth-hint { color: var(--text-3); }
+.auth-hint:empty, .auth-err:empty { margin-bottom: 10px; }
+
+.auth-pane .btn-primary { margin-top: 6px; }
+
+.auth-foot {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+/* ===================== 顶栏账号区 ===================== */
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 6px 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+}
+
+.u-avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex: none;
+}
+
+.u-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.u-logout {
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--text-3);
+  transition: background .15s, color .15s;
+}
+.u-logout:hover { background: var(--line-soft); color: var(--danger); }
+
 @media (max-width: 640px) {
-  .topbar { height: auto; flex-wrap: wrap; gap: 12px; padding: 12px 16px; }
-  .topbar-right { margin-left: 0; width: 100%; justify-content: space-between; }
-  .main { padding: 16px; }
-  .method-row { grid-template-columns: repeat(2, 1fr); }
-  .keypad button { padding: 14px 0; font-size: 17px; }
-  .stat-strip { grid-template-columns: 1fr; }
-  .search { margin-left: 0; width: 100%; }
-  .record-toolbar { gap: 10px; }
-  .seg { flex: 1; }
+  .auth-card { padding: 24px 18px 20px; }
+  .auth-send { width: 104px; font-size: 12px; }
+  .u-name { max-width: 72px; }
 }

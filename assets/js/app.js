@@ -1,13 +1,15 @@
 /* =========================================================
    收款台 · 主逻辑
-   数据全部保存在本机浏览器 localStorage，不上传任何服务器
+   收款记录与收款码保存在云端，按登录账号隔离，
+   同一个账号在手机 / 平板 / 电脑上看到的是同一本账
    ========================================================= */
 (function () {
   'use strict';
 
   /* ---------------- 常量 ---------------- */
-  var LS_RECORDS = 'cashier.records.v1';
-  var LS_CONFIG  = 'cashier.config.v1';
+  var LS_RECORDS  = 'cashier.records.v1';   // 旧的本机数据，仅用于一次性导入
+  var LS_CONFIG   = 'cashier.config.v1';
+  var LS_IMPORTED = 'cashier.imported.v1';  // 已成功导入，避免反复提示
 
   var METHOD_NAME = { wechat: '微信', alipay: '支付宝', cash: '现金', other: '其它' };
   var METHOD_COLOR = { wechat: '#07c160', alipay: '#1677ff', cash: '#f59e0b', other: '#8b5cf6' };
@@ -96,39 +98,124 @@
     return stampKey(ts).slice(5) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
-  /* ---------------- 持久化 ---------------- */
-  function loadStore() {
-    try {
-      var raw = localStorage.getItem(LS_RECORDS);
-      state.records = raw ? JSON.parse(raw) : [];
-      if (!Array.isArray(state.records)) state.records = [];
-    } catch (e) {
-      state.records = [];
+  /* ---------------- 云端读写 ---------------- */
+  var C = window.CashierCloud;
+
+  function friendly(err) {
+    if (!err) return '操作失败，请重试';
+    if (err.kind === 'network' || err.kind === 'backend-unavailable') {
+      return '网络异常，请检查连接后重试';
     }
-    try {
-      var rawCfg = localStorage.getItem(LS_CONFIG);
-      if (rawCfg) {
-        var cfg = JSON.parse(rawCfg);
-        state.config.qr = cfg && cfg.qr ? cfg.qr : { wechat: '', alipay: '' };
-        state.config.link = cfg && cfg.link ? cfg.link : { wechat: '', alipay: '' };
-      }
-    } catch (e) { /* 保持默认 */ }
+    return err.message || '操作失败，请重试';
   }
 
-  function saveRecords() {
-    try {
-      localStorage.setItem(LS_RECORDS, JSON.stringify(state.records));
-    } catch (e) {
-      toast('本机存储空间不足，记录可能未保存', 'error');
+  function idxOfId(id) {
+    for (var i = 0; i < state.records.length; i++) {
+      if (state.records[i].id === id) return i;
     }
+    return -1;
+  }
+
+  // 拉取当前账号的收款记录 + 收款码设置
+  function refreshAll() {
+    return Promise.all([C.loadRecords(), C.loadSettings()]).then(function (res) {
+      state.records = res[0];
+      state.config = res[1];
+      renderQR();
+      updateToday();
+      renderRecords();
+    });
   }
 
   function saveConfig() {
+    var channels = ['wechat', 'alipay'];
+    return Promise.all(channels.map(function (ch) {
+      return C.saveChannel(ch, state.config.qr[ch] || '', state.config.link[ch] || '');
+    }));
+  }
+
+  /* ---------------- 旧本机数据导入 ---------------- */
+  function readLocalLegacy() {
     try {
-      localStorage.setItem(LS_CONFIG, JSON.stringify(state.config));
+      var raw = localStorage.getItem(LS_RECORDS);
+      var rawCfg = localStorage.getItem(LS_CONFIG);
+      var recs = raw ? JSON.parse(raw) : [];
+      var cfg = rawCfg ? JSON.parse(rawCfg) : null;
+      return {
+        records: Array.isArray(recs) ? recs : [],
+        config: cfg || null
+      };
     } catch (e) {
-      toast('收款码过大，未能保存到本机', 'error');
+      return { records: [], config: null };
     }
+  }
+
+  function hasCloudData() {
+    return state.records.length > 0 ||
+      !!(state.config.qr.wechat || state.config.qr.alipay ||
+         state.config.link.wechat || state.config.link.alipay);
+  }
+
+  // 首次登录后，把本机还有价值的旧记录搬到云端
+  function offerLocalImport() {
+    if (localStorage.getItem(LS_IMPORTED)) return;
+    if (hasCloudData()) {
+      localStorage.setItem(LS_IMPORTED, '1');
+      return;
+    }
+    var legacy = readLocalLegacy();
+    if (!legacy.records.length && !legacy.config) {
+      localStorage.setItem(LS_IMPORTED, '1');
+      return;
+    }
+
+    var cfg = legacy.config || {};
+    var hasSetting = !!((cfg.qr && (cfg.qr.wechat || cfg.qr.alipay)) ||
+                        (cfg.link && (cfg.link.wechat || cfg.link.alipay)));
+    var tip = '发现本机有 ' + legacy.records.length + ' 条旧记录' +
+              (hasSetting ? ' 和收款码设置' : '') + '，要搬到云端吗？';
+
+    toast(tip, null, {
+      label: '导入',
+      onClick: function () { doLocalImport(legacy); }
+    });
+  }
+
+  function doLocalImport(legacy) {
+    var cfg = legacy.config || {};
+    var qr = cfg.qr || {}, link = cfg.link || {};
+    var jobs = [];
+    ['wechat', 'alipay'].forEach(function (ch) {
+      if (qr[ch] || link[ch]) jobs.push(function () {
+        return C.saveChannel(ch, qr[ch] || '', link[ch] || '').catch(function () {});
+      });
+    });
+
+    var sorted = legacy.records.slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
+    sorted.forEach(function (r) {
+      jobs.push(function () {
+        return C.addRecord({
+          amount: r.amount, method: r.method, note: r.note, ts: r.ts || Date.now()
+        }).then(function () { return true; }).catch(function () { return false; });
+      });
+    });
+
+    var done = 0;
+    var chain = Promise.resolve();
+    jobs.forEach(function (job) {
+      chain = chain.then(job).then(function (ok) { if (ok !== false) done++; });
+    });
+
+    chain.then(function () {
+      localStorage.setItem(LS_IMPORTED, '1');
+      localStorage.removeItem(LS_RECORDS);
+      localStorage.removeItem(LS_CONFIG);
+      return refreshAll();
+    }).then(function () {
+      toast('已把旧记录搬到云端：' + done + ' 项', 'success');
+    }).catch(function (err) {
+      toast(friendly(err), 'error');
+    });
   }
 
   /* ---------------- Toast ---------------- */
@@ -328,53 +415,81 @@
       return;
     }
 
-    var rec = {
-      id: Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+    var now = Date.now();
+    var local = {
+      id: 'tmp-' + now + '-' + Math.random().toString(36).slice(2, 7),
       amount: Math.round(amount * 100) / 100,
       method: state.method,
       note: el.noteInput.value.trim(),
-      ts: Date.now(),
+      ts: now,
       date: todayKey()
     };
 
-    state.records.unshift(rec);
-    saveRecords();
+    // 先入账给反馈，云端确认后换成正式记录；写失败则回滚
+    state.records.unshift(local);
+    updateToday();
+    renderRecords(local.id);
 
     playDing();
-    toast('已收款 ' + money(rec.amount) + ' · ' + METHOD_NAME[rec.method], 'success');
+    toast('已收款 ' + money(local.amount) + ' · ' + METHOD_NAME[local.method], 'success');
 
     el.amountInput.value = '';
     el.noteInput.value = '';
     syncQR();
-    updateToday();
-    renderRecords(rec.id);
     el.amountInput.focus();
+
+    if (el.btnConfirm) el.btnConfirm.classList.add('is-busy');
+
+    C.addRecord(local).then(function (saved) {
+      if (el.btnConfirm) el.btnConfirm.classList.remove('is-busy');
+      var i = idxOfId(local.id);
+      if (i === -1) return;
+      state.records[i] = saved;
+      updateToday();
+      renderRecords(saved.id);
+    }).catch(function (err) {
+      if (el.btnConfirm) el.btnConfirm.classList.remove('is-busy');
+      var i = idxOfId(local.id);
+      if (i !== -1) state.records.splice(i, 1);
+      updateToday();
+      renderRecords();
+      toast('记账失败：' + friendly(err), 'error');
+    });
   }
 
   function deleteRecord(id) {
-    var idx = -1;
-    for (var i = 0; i < state.records.length; i++) {
-      if (state.records[i].id === id) { idx = i; break; }
-    }
+    var idx = idxOfId(id);
     if (idx === -1) return;
     var removed = state.records.splice(idx, 1)[0];
-    saveRecords();
     renderRecords();
     updateToday();
 
-    state.lastDeleted = { rec: removed, idx: idx };
+    var settled = false;
+    C.removeRecord(id).catch(function (err) {
+      settled = true;
+      var pos = Math.min(idx, state.records.length);
+      state.records.splice(pos, 0, removed);
+      renderRecords();
+      updateToday();
+      toast('删除失败：' + friendly(err), 'error');
+    });
+
     toast('已删除 ' + money(removed.amount), null, {
       label: '撤销',
       onClick: function () {
-        if (!state.lastDeleted) return;
-        var item = state.lastDeleted;
-        state.lastDeleted = null;
-        var pos = Math.min(item.idx, state.records.length);
-        state.records.splice(pos, 0, item.rec);
-        saveRecords();
-        renderRecords();
-        updateToday();
-        toast('已恢复该笔记录', 'success');
+        if (settled) return;
+        settled = true;
+        // 云端记录已删除，撤销等于重新补一笔
+        C.addRecord(removed).then(function (saved) {
+          state.records.splice(Math.min(idx, state.records.length), 0, saved);
+          state.records.sort(function (a, b) { return b.ts - a.ts; });
+          renderRecords();
+          updateToday();
+          toast('已恢复该笔记录', 'success');
+        }).catch(function (err) {
+          renderRecords();
+          toast('恢复失败：' + friendly(err), 'error');
+        });
       }
     });
   }
@@ -499,7 +614,9 @@
     SCAN_METHODS.forEach(function (m) {
       var linkInput = document.querySelector('[data-link="' + m + '"]');
       var prev = document.querySelector('[data-preview="' + m + '"]');
-      if (linkInput) linkInput.value = state.config.link[m] || '';
+      if (linkInput && linkInput.value !== (state.config.link[m] || '')) {
+        linkInput.value = state.config.link[m] || '';
+      }
 
       var img = state.config.qr[m];
       var link = (state.config.link[m] || '').trim();
@@ -569,20 +686,29 @@
             return;
           }
           state.config.qr[ch] = dataUrl;
-          saveConfig();
           renderSettingsModal();
-          toast(METHOD_NAME[ch] + '收款码已保存', 'success');
+          C.saveChannel(ch, dataUrl, state.config.link[ch] || '').then(function () {
+            toast(METHOD_NAME[ch] + '收款码已保存到云端', 'success');
+          }).catch(function (err) {
+            toast('保存失败：' + friendly(err), 'error');
+          });
           input.value = '';
         });
       });
     });
 
+    // 链接是逐字符输入的，做个防抖再落云
+    var linkTimer = {};
     $$('.link-input').forEach(function (input) {
       input.addEventListener('input', function () {
         var ch = input.dataset.link;
         state.config.link[ch] = input.value.trim();
-        saveConfig();
         renderSettingsModal();
+        if (linkTimer[ch]) clearTimeout(linkTimer[ch]);
+        linkTimer[ch] = setTimeout(function () {
+          C.saveChannel(ch, state.config.qr[ch] || '', state.config.link[ch] || '')
+            .catch(function (err) { toast('保存失败：' + friendly(err), 'error'); });
+        }, 800);
       });
     });
 
@@ -591,9 +717,12 @@
         var ch = btn.dataset.clear;
         state.config.qr[ch] = '';
         state.config.link[ch] = '';
-        saveConfig();
         renderSettingsModal();
-        toast(METHOD_NAME[ch] + '收款码已移除');
+        C.saveChannel(ch, '', '').then(function () {
+          toast(METHOD_NAME[ch] + '收款码已移除');
+        }).catch(function (err) {
+          toast('移除失败：' + friendly(err), 'error');
+        });
       };
     });
 
@@ -602,12 +731,16 @@
         toast('当前没有收款记录');
         return;
       }
-      if (!confirm('确定要清空全部 ' + state.records.length + ' 条收款记录吗？\n此操作不可恢复。')) return;
-      state.records = [];
-      saveRecords();
-      updateToday();
-      renderRecords();
-      toast('已清空全部记录');
+      if (!confirm('确定要清空全部 ' + state.records.length + ' 条收款记录吗？\n' +
+                   '这会删除当前账号云端的全部记账数据，不可恢复。')) return;
+      C.clearRecords().then(function (n) {
+        state.records = [];
+        updateToday();
+        renderRecords();
+        toast('已清空 ' + n + ' 条记录');
+      }).catch(function (err) {
+        toast('清空失败：' + friendly(err), 'error');
+      });
     };
   }
 
@@ -698,15 +831,39 @@
   }
 
   /* ---------------- 启动 ---------------- */
+  function resetUI() {
+    state.records = [];
+    state.config = { qr: { wechat: '', alipay: '' }, link: { wechat: '', alipay: '' } };
+    renderQR();
+    updateToday();
+    renderRecords();
+  }
+
   function init() {
-    loadStore();
     bindEvents();
     bindSettings();
     setMethod('wechat');
     syncQR();
     updateToday();
     renderRecords();
-    el.amountInput.focus();
+
+    if (!C || C.unavailable) {
+      resetUI();
+      toast(C && C.unavailable ? C.unavailable : '云端组件未就绪，无法记账', 'error');
+      return;
+    }
+
+    window.CashierAuth.boot({
+      onSignedIn: function () {
+        refreshAll()
+          .then(function () {
+            offerLocalImport();
+            if ($('#view-counter').classList.contains('is-active')) el.amountInput.focus();
+          })
+          .catch(function (err) { toast(friendly(err), 'error'); });
+      },
+      onSignedOut: resetUI
+    });
   }
 
   // 兼容 script 被动态插入或延迟执行的情况
