@@ -23,7 +23,8 @@
     range: 'today',
     filter: 'all',
     keyword: '',
-    lastDeleted: null
+    lastDeleted: null,
+    adminUnlocked: false   // 线上口令解锁，仅在本次会话有效
   };
 
   /* ---------------- DOM ---------------- */
@@ -600,8 +601,173 @@
     }
   }
 
+  /* =========================================================
+     管理模式
+     收款码直接指向收款账户，属于核心设置：
+       · 本机打开（file:// 或 localhost）→ 可直接修改
+       · 通过网址访问 → 入口隐藏，仅店主用口令临时解锁
+       · 「清空全部记录」更严格，任何情况下都只限本机
+     ========================================================= */
+  var ADMIN_TAPS = 7;
+  var adminTapCount = 0;
+  var adminTapTimer = null;
+
+  function isLocalMode() {
+    if (window.location.protocol === 'file:') return true;
+    var h = window.location.hostname;
+    return h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h === '::1';
+  }
+
+  function canManage() {
+    return isLocalMode() || state.adminUnlocked;
+  }
+
+  // 不明文存口令：加盐后做一轮哈希即可，防的是随手翻看而非专业攻击
+  function hashToken(s) {
+    var h = 5381;
+    var str = 'cashier::' + s;
+    for (var i = 0; i < str.length; i++) {
+      h = ((h << 5) + h + str.charCodeAt(i)) & 0x7fffffff;
+    }
+    return 'k' + h.toString(36) + '-' + str.length.toString(36);
+  }
+
+  // 部分元素在 CSS 里定了 display，hidden 属性会被覆盖，这里用行内样式兜底
+  function setHidden(node, hide) {
+    if (!node) return;
+    if (hide) {
+      node.setAttribute('hidden', '');
+      node.style.display = 'none';
+    } else {
+      node.removeAttribute('hidden');
+      node.style.display = '';
+    }
+  }
+
+  function applyAdminUI() {
+    var local = isLocalMode();
+    setHidden($('#btnSettings'), !canManage());
+    setHidden($('#adminZone'), !local);
+    setHidden($('#wipeZone'), !local);
+    if (local) loadAdminTokenHint();
+  }
+
+  function setHint(text, isErr) {
+    var box = $('#adminTokenHint');
+    if (!box) return;
+    box.textContent = text;
+    box.style.color = isErr ? 'var(--danger, #e5484d)' : '';
+  }
+
+  function loadAdminTokenHint() {
+    if (!C || C.unavailable || !C.loadAdminToken) return;
+    // 未登录时会读不到，属于预期情况，静默跳过
+    C.loadAdminToken().then(function (hash) {
+      setHint(hash ? '当前已设置管理口令，可在此重设' : '当前未设置口令，线上无法解锁修改', false);
+    }).catch(function () { setHint(''); });
+  }
+
+  function openAdminGate() {
+    if (!C || C.unavailable) {
+      toast(C && C.unavailable ? C.unavailable : '云端组件未就绪', 'error');
+      return;
+    }
+    var err = $('#adminErr');
+    if (err) err.textContent = '';
+    var input = $('#adminCodeInput');
+    if (input) input.value = '';
+    setHidden($('#adminModal'), false);
+    setTimeout(function () { if (input) input.focus(); }, 40);
+  }
+
+  function closeAdminGate() {
+    setHidden($('#adminModal'), true);
+  }
+
+  function unlockAdmin() {
+    var input = $('#adminCodeInput');
+    var err = $('#adminErr');
+    var code = input ? input.value.trim() : '';
+    if (!code) {
+      if (err) err.textContent = '请输入管理口令';
+      return;
+    }
+    if (!C || C.unavailable) {
+      if (err) err.textContent = C && C.unavailable ? C.unavailable : '云端组件未就绪';
+      return;
+    }
+
+    C.loadAdminToken().then(function (hash) {
+      if (!hash) {
+        if (err) err.textContent = '尚未设置管理口令，请在本机打开页面后到「收款码设置」里设置';
+        return;
+      }
+      if (hashToken(code) !== hash) {
+        if (err) err.textContent = '口令不对，请重试';
+        if (input) { input.value = ''; input.focus(); }
+        return;
+      }
+      state.adminUnlocked = true;
+      closeAdminGate();
+      applyAdminUI();
+      toast('已解锁，刷新页面后自动失效', 'success');
+      openSettings();
+    }).catch(function (e) {
+      if (err) err.textContent = friendly(e);
+    });
+  }
+
+  // 顶栏连点：不留入口、不占版面，只有知道方法的人才触发得到
+  function bindBrandTap() {
+    var brand = $('#brandMark');
+    if (!brand) return;
+    brand.addEventListener('click', function () {
+      if (canManage()) return;
+      adminTapCount++;
+      if (adminTapTimer) clearTimeout(adminTapTimer);
+      adminTapTimer = setTimeout(function () { adminTapCount = 0; }, 2500);
+      if (adminTapCount >= ADMIN_TAPS) {
+        adminTapCount = 0;
+        clearTimeout(adminTapTimer);
+        openAdminGate();
+      }
+    });
+  }
+
+  function bindAdminZone() {
+    var btn = $('#btnSaveAdminToken');
+    if (!btn) return;
+    btn.onclick = function () {
+      if (!isLocalMode()) {
+        toast('请在本机打开页面后再设置口令', 'error');
+        return;
+      }
+      var input = $('#adminTokenInput');
+      var raw = input ? input.value.trim() : '';
+      if (raw.length && raw.length < 6) {
+        setHint('口令至少 6 位，或留空表示禁止线上解锁', true);
+        return;
+      }
+      if (!C || C.unavailable) {
+        setHint(C && C.unavailable ? C.unavailable : '云端组件未就绪', true);
+        return;
+      }
+      C.saveAdminToken(raw ? hashToken(raw) : '').then(function () {
+        if (input) input.value = '';
+        setHint(raw ? '管理口令已保存到云端，可用于线上解锁' : '已关闭线上解锁，仅本机可修改', false);
+        toast(raw ? '管理口令已保存' : '已关闭线上解锁', 'success');
+      }).catch(function (e) {
+        setHint(friendly(e), true);
+      });
+    };
+  }
+
   /* ---------------- 设置弹窗 ---------------- */
   function openSettings() {
+    if (!canManage()) {
+      toast('收款码设置仅能在本机修改', 'error');
+      return;
+    }
     renderSettingsModal();
     el.modal.hidden = false;
   }
@@ -665,6 +831,15 @@
   function bindSettings() {
     $('#btnSettings').onclick = openSettings;
     $('#btnCloseSettings').onclick = closeSettings;
+    $('#btnCloseAdmin').onclick = closeAdminGate;
+    $('#btnUnlockAdmin').onclick = unlockAdmin;
+    $('#adminCodeInput').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); unlockAdmin(); }
+    });
+    $('#adminModal').addEventListener('click', function (e) {
+      if (e.target === $('#adminModal')) closeAdminGate();
+    });
+
     el.modal.addEventListener('click', function (e) {
       if (e.target === el.modal) closeSettings();
     });
@@ -727,6 +902,10 @@
     });
 
     $('#btnWipe').onclick = function () {
+      if (!isLocalMode()) {
+        toast('清空全部记录仅能在本机操作', 'error');
+        return;
+      }
       if (!state.records.length) {
         toast('当前没有收款记录');
         return;
@@ -818,6 +997,8 @@
       var onCounter = $('#view-counter').classList.contains('is-active');
 
       if (e.key === 'Escape') {
+        var am = $('#adminModal');
+        if (am && am.hidden === false) { closeAdminGate(); return; }
         if (el.modal.hidden === false) { closeSettings(); return; }
         if (inField && e.target === el.amountInput) { clearAll(); return; }
       }
@@ -834,6 +1015,8 @@
   function resetUI() {
     state.records = [];
     state.config = { qr: { wechat: '', alipay: '' }, link: { wechat: '', alipay: '' } };
+    state.adminUnlocked = false;
+    applyAdminUI();
     renderQR();
     updateToday();
     renderRecords();
@@ -842,10 +1025,13 @@
   function init() {
     bindEvents();
     bindSettings();
+    bindBrandTap();
+    bindAdminZone();
     setMethod('wechat');
     syncQR();
     updateToday();
     renderRecords();
+    applyAdminUI();
 
     if (!C || C.unavailable) {
       resetUI();
@@ -858,6 +1044,7 @@
         refreshAll()
           .then(function () {
             offerLocalImport();
+            applyAdminUI();
             if ($('#view-counter').classList.contains('is-active')) el.amountInput.focus();
           })
           .catch(function (err) { toast(friendly(err), 'error'); });

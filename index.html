@@ -9,7 +9,7 @@
 <body>
 
 <header class="topbar">
-  <div class="brand">
+  <div class="brand" id="brandMark" title="收款台">
     <span class="brand-mark">¥</span>
     <span class="brand-name">收款台</span>
   </div>
@@ -263,13 +263,49 @@
         <div class="qs-preview" data-preview="alipay"></div>
       </div>
 
-      <div class="danger-zone">
+      <div class="qs-setup admin-setup" id="adminZone">
+        <div class="qs-side">
+          <span class="m-badge other lg">管</span>
+          <div>
+            <strong>管理口令</strong>
+            <span class="qs-desc">在别的设备 / 网址上连续点顶栏「收款台」7 次，输对口令即可临时修改收款码</span>
+          </div>
+        </div>
+        <div class="qs-actions">
+          <input type="password" class="link-input" id="adminTokenInput" placeholder="留空表示禁止线上解锁">
+          <button class="btn btn-outline" id="btnSaveAdminToken">保存口令</button>
+        </div>
+        <p class="qs-hint" id="adminTokenHint"></p>
+      </div>
+
+      <div class="danger-zone" id="wipeZone">
         <div>
           <strong>清空全部收款记录</strong>
           <span class="qs-desc">删除当前账号在云端的全部记账数据，不影响收款码设置</span>
         </div>
         <button class="btn btn-danger" id="btnWipe">清空</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 管理口令解锁 ============ -->
+<div class="modal-mask" id="adminModal" hidden>
+  <div class="modal modal-sm">
+    <div class="modal-head">
+      <h3>管理验证</h3>
+      <button class="modal-close" id="btnCloseAdmin">×</button>
+    </div>
+
+    <div class="modal-body">
+      <p class="modal-tip">
+        收款码属于收款账户的核心设置，仅店主可修改。<br>请输入管理口令临时解锁（刷新页面后失效）。
+      </p>
+      <input class="auth-input" id="adminCodeInput" type="password" maxlength="40"
+             placeholder="管理口令" autocomplete="off">
+      <p class="auth-err" id="adminErr"></p>
+      <button class="btn btn-primary btn-block" id="btnUnlockAdmin" type="button">解锁设置</button>
+      <p class="auth-foot" id="adminFoot">口令在「本机打开 → 收款码设置」里可以设置或修改</p>
     </div>
   </div>
 </div>

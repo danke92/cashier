@@ -17,9 +17,13 @@
     return;
   }
 
-  // 云端接口按发布域名校验来源，从别的网址打开会一直被拒，这里提前说清楚
+  // 云端接口按来源校验：绑定域名、本机直开（file://）、localhost 均被服务端放行，
+  // 但其它外部网址（例如 github.io 上的同名副本）会被 403 拒掉，这里提前说清楚
   var host = window.location && window.location.hostname;
-  if (host && PUBLIC_CONFIG.endpoint.indexOf(host) === -1) {
+  var protocol = window.location && window.location.protocol;
+  if (protocol !== 'file:' && host &&
+      host !== 'localhost' && host !== '127.0.0.1' && host !== '[::1]' && host !== '::1' &&
+      PUBLIC_CONFIG.endpoint.indexOf(host) === -1) {
     window.CashierCloud = {
       unavailable: '当前网址没有绑定云服务，请改用 ' + PUBLIC_CONFIG.endpoint + ' 打开'
     };
@@ -268,6 +272,42 @@
     });
   }
 
+  // 管理口令：以哈希形式存在 cashier_settings 里（channel = ADMIN_CHANNEL），
+  // 受同样的行级策略保护 —— 只有账号本人能读能改，别人就算猜到页面地址也拿不到
+  var ADMIN_CHANNEL = '__admin';
+
+  function loadAdminToken() {
+    return wrap(
+      cloud.database.from('cashier_settings')
+        .select('pay_link')
+        .eq('channel', ADMIN_CHANNEL)
+    ).then(function (res) {
+      var rows = unwrap(res, '读取管理口令失败');
+      return rows && rows.length ? (rows[0].pay_link || '') : '';
+    });
+  }
+
+  function saveAdminToken(hash) {
+    var patch = { qr_image: '', pay_link: hash || '' };
+    return wrap(
+      cloud.database.from('cashier_settings')
+        .update(patch)
+        .eq('channel', ADMIN_CHANNEL)
+        .select('channel')
+    ).then(function (res) {
+      var rows = unwrap(res, '保存管理口令失败');
+      if (rows && rows.length) return true;
+      var ins = { channel: ADMIN_CHANNEL, qr_image: '', pay_link: hash || '' };
+      return wrap(
+        cloud.database.from('cashier_settings').insert(ins).select('channel')
+      ).then(function (res2) {
+        var rows2 = unwrap(res2, '保存管理口令失败');
+        if (!rows2 || !rows2.length) throw new Error('未能写入，请退出后重新登录再试');
+        return true;
+      });
+    });
+  }
+
   /* ================= 对外接口 ================= */
   window.CashierCloud = {
     getSession: getSession,
@@ -289,6 +329,8 @@
     clearRecords: clearRecords,
     loadSettings: loadSettings,
     saveChannel: saveChannel,
+    loadAdminToken: loadAdminToken,
+    saveAdminToken: saveAdminToken,
     isNetworkError: function (err) {
       return !!err && (err.kind === 'network' || err.kind === 'backend-unavailable');
     }
