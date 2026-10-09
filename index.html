@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>收款台</title>
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">¥</span>
+    <span class="brand-name">收款台</span>
+  </div>
+
+  <nav class="tabs">
+    <button class="tab is-active" data-view="counter">收款</button>
+    <button class="tab" data-view="records">收款记录</button>
+  </nav>
+
+  <div class="topbar-right">
+    <div class="today-chip">
+      <span class="today-label">今日收款</span>
+      <strong class="today-amount" id="todayAmount">¥0.00</strong>
+    </div>
+    <button class="btn btn-ghost" id="btnSettings">
+      <svg viewBox="0 0 24 24" class="icon"><path d="M12 15.5A3.5 3.5 0 0 1 8.5 12 3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5 3.5 3.5 0 0 1-3.5 3.5m7.43-2.53c.04-.32.07-.64.07-.97 0-.33-.03-.66-.07-1l2.11-1.63c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.31-.61-.22l-2.49 1c-.52-.39-1.06-.73-1.69-.98l-.37-2.65A.506.506 0 0 0 14 2h-4c-.25 0-.46.18-.5.44l-.37 2.65c-.63.25-1.17.59-1.69.98l-2.49-1c-.22-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11c-.04.34-.07.67-.07 1 0 .33.03.65.07.97l-2.11 1.66c-.19.15-.25.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.06.73 1.69.98l.37 2.65c.04.26.25.44.5.44h4c.25 0 .46-.18.5-.44l.37-2.65c.63-.25 1.17-.59 1.69-.98l2.49 1c.22.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.66Z"/></svg>
+      收款码设置
+    </button>
+  </div>
+</header>
+
+<main class="main">
+
+  <!-- ============ 收款台 ============ -->
+  <section class="view is-active" id="view-counter">
+    <div class="counter-grid">
+
+      <!-- 左：输入 -->
+      <div class="col-input">
+        <div class="card">
+          <div class="card-head">
+            <h2>收款金额</h2>
+            <span class="hint">支持键盘直接输入</span>
+          </div>
+
+          <div class="amount-field" id="amountField">
+            <span class="cny">¥</span>
+            <input id="amountInput" type="text" inputmode="decimal" placeholder="0.00"
+                   autocomplete="off" aria-label="收款金额">
+            <button class="clear-btn" id="btnClear" title="清空 (Esc)">×</button>
+          </div>
+
+          <div class="quick-row" id="quickRow">
+            <button class="chip" data-amount="5">¥5</button>
+            <button class="chip" data-amount="10">¥10</button>
+            <button class="chip" data-amount="20">¥20</button>
+            <button class="chip" data-amount="50">¥50</button>
+            <button class="chip" data-amount="100">¥100</button>
+          </div>
+
+          <div class="note-field">
+            <input id="noteInput" type="text" maxlength="40" placeholder="备注（可选），例如：桌号 A3 / 商品名">
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>收款方式</h2></div>
+          <div class="method-row" id="methodRow">
+            <button class="method is-active" data-method="wechat">
+              <span class="m-badge wechat">微</span>
+              <span class="m-name">微信</span>
+            </button>
+            <button class="method" data-method="alipay">
+              <span class="m-badge alipay">支</span>
+              <span class="m-name">支付宝</span>
+            </button>
+            <button class="method" data-method="cash">
+              <span class="m-badge cash">现</span>
+              <span class="m-name">现金</span>
+            </button>
+            <button class="method" data-method="other">
+              <span class="m-badge other">他</span>
+              <span class="m-name">其它</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="card keypad-card">
+          <div class="keypad" id="keypad">
+            <button data-key="7">7</button>
+            <button data-key="8">8</button>
+            <button data-key="9">9</button>
+            <button data-key="del" class="k-fn">删除</button>
+
+            <button data-key="4">4</button>
+            <button data-key="5">5</button>
+            <button data-key="6">6</button>
+            <button data-key="C" class="k-fn">清空</button>
+
+            <button data-key="1">1</button>
+            <button data-key="2">2</button>
+            <button data-key="3">3</button>
+            <button data-key="00">00</button>
+
+            <button data-key="0">0</button>
+            <button data-key=".">.</button>
+            <button data-key="+10">+10</button>
+            <button data-key="confirm" class="k-confirm">收 款<br><small>Enter</small></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右：二维码 -->
+      <div class="col-qr">
+        <div class="card qr-card">
+          <div class="card-head">
+            <h2 id="qrTitle">收款二维码</h2>
+            <span class="method-tag" id="qrMethodTag">微信</span>
+          </div>
+
+          <div class="qr-stage" id="qrStage">
+            <!-- 由 JS 填充：上传的收款码图片 / 生成的二维码 / 空状态 -->
+          </div>
+
+          <div class="qr-amount">
+            <span class="qa-label">请支付</span>
+            <span class="qa-value" id="qrAmount">¥0.00</span>
+          </div>
+
+          <p class="qr-note" id="qrNote">请让顾客扫描上方二维码完成付款</p>
+
+          <button class="btn btn-primary btn-block" id="btnConfirm">
+            <svg viewBox="0 0 24 24" class="icon"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+            确认已收款
+          </button>
+          <p class="tip-line">顾客付款后点击此按钮记账 · 快捷键 Enter</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 收款记录 ============ -->
+  <section class="view" id="view-records">
+    <div class="stat-strip">
+      <div class="stat">
+        <span class="s-label">今日收款</span>
+        <strong class="s-value accent" id="statToday">¥0.00</strong>
+        <span class="s-sub" id="statTodayCount">0 笔</span>
+      </div>
+      <div class="stat">
+        <span class="s-label">本月收款</span>
+        <strong class="s-value" id="statMonth">¥0.00</strong>
+        <span class="s-sub" id="statMonthCount">0 笔</span>
+      </div>
+      <div class="stat">
+        <span class="s-label">累计收款</span>
+        <strong class="s-value" id="statAll">¥0.00</strong>
+        <span class="s-sub" id="statAllCount">0 笔</span>
+      </div>
+      <div class="stat methods">
+        <span class="s-label">今日分渠道</span>
+        <div class="method-bars" id="methodBars"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="record-toolbar">
+        <div class="seg" id="rangeSeg">
+          <button class="is-active" data-range="today">今日</button>
+          <button data-range="month">本月</button>
+          <button data-range="all">全部</button>
+        </div>
+        <div class="seg" id="filterSeg">
+          <button class="is-active" data-filter="all">全部方式</button>
+          <button data-filter="wechat">微信</button>
+          <button data-filter="alipay">支付宝</button>
+          <button data-filter="cash">现金</button>
+          <button data-filter="other">其它</button>
+        </div>
+        <input type="search" id="searchInput" class="search" placeholder="搜索备注或金额">
+      </div>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width:150px">时间</th>
+              <th style="width:110px">金额</th>
+              <th style="width:100px">方式</th>
+              <th>备注</th>
+              <th style="width:80px"></th>
+            </tr>
+          </thead>
+          <tbody id="recordBody"></tbody>
+        </table>
+      </div>
+
+      <div class="empty" id="recordEmpty" hidden>
+        <div class="empty-icon">🧾</div>
+        <p>暂无收款记录</p>
+        <span>回到「收款」页记账后会显示在这里</span>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ 设置弹窗 ============ -->
+<div class="modal-mask" id="settingsModal" hidden>
+  <div class="modal">
+    <div class="modal-head">
+      <h3>收款码设置</h3>
+      <button class="modal-close" id="btnCloseSettings">×</button>
+    </div>
+
+    <div class="modal-body">
+      <p class="modal-tip">
+        上传微信 / 支付宝的<b>收款码图片</b>，收款时会直接展示给顾客扫描。
+        也可以填<b>收款链接</b>，程序会现场生成二维码。两种方式都没有时，收款台会提示你先设置。
+      </p>
+
+      <div class="qr-setup" data-channel="wechat">
+        <div class="qs-side">
+          <span class="m-badge wechat lg">微</span>
+          <div>
+            <strong>微信收款</strong>
+            <span class="qs-desc">微信 → 我 → 服务 → 收付款 → 二维码收款 → 保存收款码</span>
+          </div>
+        </div>
+        <div class="qs-actions">
+          <label class="btn btn-outline">
+            上传图片<input type="file" accept="image/*" class="file-input" data-file="wechat">
+          </label>
+          <input type="text" class="link-input" data-link="wechat" placeholder="或粘贴收款链接（选填）">
+          <button class="btn btn-text" data-clear="wechat">移除</button>
+        </div>
+        <div class="qs-preview" data-preview="wechat"></div>
+      </div>
+
+      <div class="qr-setup" data-channel="alipay">
+        <div class="qs-side">
+          <span class="m-badge alipay lg">支</span>
+          <div>
+            <strong>支付宝收款</strong>
+            <span class="qs-desc">支付宝 → 收钱 → 保存收款码图片，或复制收款链接</span>
+          </div>
+        </div>
+        <div class="qs-actions">
+          <label class="btn btn-outline">
+            上传图片<input type="file" accept="image/*" class="file-input" data-file="alipay">
+          </label>
+          <input type="text" class="link-input" data-link="alipay" placeholder="或粘贴收款链接（选填）">
+          <button class="btn btn-text" data-clear="alipay">移除</button>
+        </div>
+        <div class="qs-preview" data-preview="alipay"></div>
+      </div>
+
+      <div class="danger-zone">
+        <div>
+          <strong>清空全部收款记录</strong>
+          <span class="qs-desc">仅删除本机记账数据，不影响你的收款码图片</span>
+        </div>
+        <button class="btn btn-danger" id="btnWipe">清空</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script src="assets/vendor/qrcode.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>
